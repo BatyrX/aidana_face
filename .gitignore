@@ -1,0 +1,12 @@
+.venv/
+faceid_project/venv310/
+__pycache__/
+*.pyc
+*.so
+*.dylib
+*.dat
+media/debug/
+media/diary_photos/
+media/face_images/
+.env
+.DS_Store
