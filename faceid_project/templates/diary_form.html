@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {% if entry %}Редактировать запись{% else %}Создать запись{% endif %}
+{% endblock %}
+
+{% block content %}
+    <h2>{% if entry %}Редактировать запись{% else %}Создать запись{% endif %}</h2>
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="title" class="form-label">Заголовок</label>
+            <input type="text" class="form-control" id="title" name="title" value="{{ entry.title|default_if_none:'' }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="content" class="form-label">Текст</label>
+            <textarea class="form-control" id="content" name="content" rows="5" required>{{ entry.content|default_if_none:'' }}</textarea>
+        </div>
+        <div class="mb-3">
+            <label for="photo" class="form-label">Фотография</label>
+            <input type="file" class="form-control" id="photo" name="photo" accept="image/*">
+            {% if entry.photo %}
+                <p>Текущая фотография: <img src="{{ entry.photo.url }}" alt="Current photo" style="max-width: 200px; margin-top: 10px;"></p>
+            {% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+        <a href="{% url 'diary_list' %}" class="btn btn-secondary">Отмена</a>
+    </form>
+{% endblock %}

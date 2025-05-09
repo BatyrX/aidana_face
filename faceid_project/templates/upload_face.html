@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Регистрация Face ID{% endblock %}
+
+{% block content %}
+    {% if user.is_authenticated %}
+        <h2>Регистрация Face ID</h2>
+        <div style="position: relative;">
+            <video id="video" width="640" height="480" autoplay></video>
+            <canvas id="overlay" width="640" height="480" style="position: absolute; top: 0; left: 0;"></canvas>
+            <canvas id="canvas" style="display: none;"></canvas>
+            <button id="capture" disabled>Записать Face ID</button>
+        </div>
+        <p id="status">Позиционируйте лицо в центре овала...</p>
+        <script src="https://unpkg.com/face-api.js/dist/face-api.min.js"></script>
+        <script>
+            async function loadFaceApi() {
+                try {
+                    await faceapi.nets.tinyFaceDetector.loadFromUri('/static/biometric/models/');
+                    await faceapi.nets.faceLandmark68Net.loadFromUri('/static/biometric/models/');
+                    console.log('Face-api.js models loaded successfully');
+                } catch (err) {
+                    console.error('Error loading face-api.js models:', err);
+                    document.getElementById('status').textContent = 'Ошибка загрузки моделей распознавания лиц. Проверьте консоль браузера.';
+                }
+            }
+
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const overlay = document.getElementById('overlay');
+            const captureButton = document.getElementById('capture');
+            const status = document.getElementById('status');
+            const ctx = overlay.getContext('2d');
+            let faceDetected = false;
+            let isProcessing = false; // Флаг для предотвращения многократных запросов
+
+            async function startVideo() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        console.log('Video stream started');
+                        detectFaces();
+                    };
+                } catch (err) {
+                    console.error('Error accessing webcam:', err);
+                    status.textContent = 'Ошибка доступа к веб-камере: ' + err.message;
+                }
+            }
+
+            async function detectFaces() {
+                try {
+                    const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.5 })).withFaceLandmarks();
+                    ctx.clearRect(0, 0, overlay.width, overlay.height);
+                    ctx.strokeStyle = 'green';
+                    ctx.lineWidth = 2;
+
+                    // Рисуем овал
+                    ctx.beginPath();
+                    ctx.ellipse(320, 240, 150, 200, 0, 0, 2 * Math.PI);
+                    ctx.stroke();
+
+                    if (detections.length > 0) {
+                        const face = detections[0];
+                        const box = face.detection.box;
+                        ctx.strokeStyle = 'red';
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+                        status.textContent = 'Лицо обнаружено! Нажмите "Записать Face ID".';
+                        faceDetected = true;
+                        captureButton.disabled = false;
+                    } else {
+                        status.textContent = 'Позиционируйте лицо в центре овала...';
+                        faceDetected = false;
+                        captureButton.disabled = true;
+                    }
+                } catch (err) {
+                    console.error('Error detecting faces:', err);
+                    status.textContent = 'Ошибка распознавания лица: ' + err.message;
+                }
+
+                requestAnimationFrame(detectFaces);
+            }
+
+            captureButton.addEventListener('click', async () => {
+                if (!faceDetected) {
+                    status.textContent = 'Лицо не обнаружено. Позиционируйте лицо в овале.';
+                    return;
+                }
+                if (isProcessing) {
+                    return; // Предотвращаем многократные запросы
+                }
+
+                isProcessing = true;
+                captureButton.disabled = true;
+                status.textContent = 'Обработка лица...';
+
+                canvas.width = 1920;
+                canvas.height = 1080;
+                canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/jpeg', 0.9);
+
+                console.log('Captured image (first 50 chars):', imageData.substring(0, 50));
+
+                try {
+                    const response = await fetch('/upload_face/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        body: JSON.stringify({ image: imageData })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        status.textContent = 'Face ID успешно зарегистрирован! Перенаправление...';
+                        setTimeout(() => {
+                            window.location.href = "{% url 'home' %}";
+                        }, 1000);
+                    } else {
+                        status.textContent = result.message || 'Лицо не распознано. Попробуйте снова.';
+                        window.location.href = "{% url 'login' %}";
+                    }
+                } catch (err) {
+                    console.error('Error sending image:', err);
+                    status.textContent = 'Ошибка сервера: ' + err.message;
+                    window.location.href = "{% url 'login' %}";
+                } finally {
+                    isProcessing = false;
+                    captureButton.disabled = !faceDetected;
+                }
+            });
+
+            loadFaceApi().then(startVideo);
+        </script>
+    {% else %}
+        <p>Пожалуйста, <a href="{% url 'login' %}">войдите</a>, чтобы зарегистрировать Face ID.</p>
+    {% endif %}
+{% endblock %}
